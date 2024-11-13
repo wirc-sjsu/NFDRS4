@@ -19,8 +19,9 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
 endif()
 
 add_subdirectory(lib)
-
 add_subdirectory(app)
+
+set(SPATIAL_LIBS_DIR "${CMAKE_SOURCE_DIR}/extern/spatial")
 
 #install locations for apps, headers, and libs
 set(app_dest "bin")
