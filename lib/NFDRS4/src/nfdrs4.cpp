@@ -65,7 +65,7 @@ NFDRS4::NFDRS4()
 // inLat: Latitude (degrees)
 // FuelModel: Fuel Model (char)
 //
-NFDRS4::NFDRS4(double inLat, char FuelModel,int inSlopeClass, double inAvgAnnPrecip,bool LT,bool Cure, bool IsAnnual)
+NFDRS4::NFDRS4(double inLat, char FuelModel, int inSlopeClass, double inAvgAnnPrecip, bool LT, bool Cure, bool IsAnnual)
 {
     CreateFuelModels();
     StartKBDI = 100;
@@ -355,6 +355,83 @@ void NFDRS4::Update(int Year, int Month, int Day, int Hour, int Julian, double T
     lastUtcUpdateTime = thisUtcTime;
 }
 
+//void NFDRS4::Update(int Year, int Month, int Day, int Hour, int Julian, double Temp, double MinTemp, 
+//  double MaxTemp, double RH, double PPTAcc, double PPTAmt, double WS, bool SnowDay, int RegObsHr,
+//  double MC1, double MC10, double MC100, double MC1000, double FuelTemperature)
+void NFDRS4::Update(int Year, int Month, int Day, int Hour, double Temp, double MinTemp, 
+    double MaxTemp, double RH, double MinRH, double PPTAmt, double pcp24, double WS, bool SnowDay, 
+    int RegObsHr, double MC1, double MC10, double MC100, double MC1000, double FuelTemperature)
+{
+    int Julian = CalcJulianDay(Year, Month - 1, Day);
+
+	if (PrevYear > 0 && YesterdayJDay > 0)
+	{
+		if (Year < PrevYear || (Year > (PrevYear + 1)) || (365 * (Year - PrevYear) + Julian - YesterdayJDay > 30))
+		{
+			//reinit
+			Init(Lat, FuelModel, SlopeClass, AvgPrecip, UseLoadTransfer, UseCuring, HerbFM.GetIsAnnual(), KBDIThreshold, m_regObsHour, true);// , HerbFM.GetMaxGSI(), HerbFM.GetGreenupThreshold());
+		}
+	}
+
+	//Herb and 1-Hour reset every year.... Verify we want to do this
+    if (Julian < YesterdayJDay || YesterdayJDay < 0) {
+        HerbFM.ResetHerbState();
+    }
+	if (PrevYear != Year)
+	{		
+		PrevYear = Year;
+	}
+	
+    //update 24 hour deques
+    UTCTime thisUtcTime(Year, Month, Day, Hour, 0, 0);
+
+   // Update live fuel moisture once per day
+    if (Hour == RegObsHr)// || num_updates==0)
+    {
+
+        //LFM requires temperatures in F and RH between 1 and 100
+        // Note: Need to set up a common units structure for all calculations
+        // Maybe just need to change Nelson code to accept above temp / rh scales
+       // int secs = difftime(thisUtcTime.timestamp(), lastDailyUpdateTime.timestamp());
+        int secs = thisUtcTime.timestamp() - lastDailyUpdateTime.timestamp();
+  		if (SnowDay)
+			nConsectiveSnowDays++;
+		else
+			nConsectiveSnowDays = 0;
+
+		//update the precip deque before updating GSI!!!!
+		int days = secs / 86400;//86400 seconds per day
+		if (days > 1)//gap, deal with it by inserting zeroes
+		{
+			int pDays = min(days - 1, nPrecipQueueDays);
+			for (int p = 0; p < pDays; p++)
+				qPrecip.push_back(0.0);
+		}
+		qPrecip.push_back(pcp24);
+		while (qPrecip.size() > nPrecipQueueDays)
+			qPrecip.pop_front();
+
+		HerbFM.Update(Temp, MaxTemp, MinTemp, RH, MinRH, Julian, GetXDaysPrecipitation(HerbFM.GetNumPrecipDays()), thisUtcTime.timestamp());
+		WoodyFM.Update(Temp, MaxTemp, MinTemp, RH, MinRH, Julian, GetXDaysPrecipitation(WoodyFM.GetNumPrecipDays()), thisUtcTime.timestamp());
+
+		m_GSI = HerbFM.CalcRunningAvgGSI();
+        MCHERB = HerbFM.GetMoisture(nConsectiveSnowDays >= SNOWDAYS_TRIGGER ? true : false);
+        MCWOOD = WoodyFM.GetMoisture(nConsectiveSnowDays >= SNOWDAYS_TRIGGER ? true : false);
+        // Calculate the daily KBDI that is used for the drought fuel loading
+        KBDI = iCalcKBDI(pcp24, (int) MaxTemp, CummPrecip, YKBDI, AvgPrecip);
+		YKBDI = KBDI;
+
+    }
+	iSetFuelMoistures(MC1, MC10, MC100, MC1000, MCWOOD, MCHERB, FuelTemperature);
+	// Calculate the indices
+
+	double fSC, fERC, fBI, fIC;
+	iCalcIndexes((int)WS, SlopeClass, &fSC, &fERC, &fBI, &fIC);
+    YesterdayJDay = Julian;
+    lastUtcUpdateTime = thisUtcTime;
+}
+
+
 void NFDRS4::Update(int Year, int Month, int Day, int Hour, double Temp, double RH, double PPTAmt, double SolarRad, double WS, bool SnowDay)
 {
     int Julian = CalcJulianDay(Year, Month - 1, Day);
@@ -432,6 +509,129 @@ void NFDRS4::Update(int Year, int Month, int Day, int Hour, double Temp, double 
 
     //moved here so we have hourly fueltemp to save to DB
     FuelTemperature = OneHourFM.surfaceTemperature();
+
+    //update 24 hour deques
+    UTCTime thisUtcTime(Year, Month, Day, Hour, 0, 0);   
+    time_t thisDiff = thisUtcTime - lastUtcUpdateTime;
+    time_t hoursDiff = thisDiff / utcHourDiff;
+    if (hoursDiff > 1)//gap, insert NODATA
+    {
+        for (int h = 1; h < hoursDiff; h++)
+        {
+            qHourlyPrecip.push_back(NORECORD);
+            qHourlyTemp.push_back(NORECORD);
+            qHourlyRH.push_back(NORECORD);
+        }
+    }
+    qHourlyPrecip.push_back(PPTAmt);
+    qHourlyTemp.push_back(Temp);
+    qHourlyRH.push_back(RH);
+    //trim the deques
+    while (qHourlyTemp.size() > 24)
+        qHourlyTemp.pop_front();
+    while (qHourlyRH.size() > 24)
+        qHourlyRH.pop_front();
+    while (qHourlyPrecip.size() > 24)
+        qHourlyPrecip.pop_front();
+    //deques OK, now figure Min/Max's and 24 hour pcp
+    double MinRH = NORECORD, MinTemp = NORECORD, MaxTemp = NORECORD, pcp24 = 0.0;
+    
+    for (std::deque<double>::iterator it = qHourlyTemp.begin(); it != qHourlyTemp.end(); ++it)
+    {
+        if ((*it) != NORECORD)
+        {
+            if (MaxTemp == NORECORD)
+                MaxTemp = *it;
+            else
+                MaxTemp = max(MaxTemp, *it);
+            if (MinTemp == NORECORD)
+                MinTemp = *it;
+            else
+                MinTemp = min(MinTemp, *it);
+        }
+    }
+    for (std::deque<double>::iterator it = qHourlyRH.begin(); it != qHourlyRH.end(); ++it)
+    {
+        if ((*it) != NORECORD)
+        {
+            if (MinRH == NORECORD)
+                MinRH = *it;
+            else
+                MinRH = min(MinRH, *it);
+        }
+    }
+    for (std::deque<double>::iterator it = qHourlyPrecip.begin(); it != qHourlyPrecip.end(); ++it)
+    {
+        if (*it != NORECORD)
+            pcp24 += *it;
+    }
+    // Update live fuel moisture once per day
+    if (Hour == m_regObsHour)// || num_updates==0)
+    {
+        int secs = thisUtcTime.timestamp() - lastDailyUpdateTime.timestamp();
+        //LFM requires temperatures in F and RH between 1 and 100
+        // Note: Need to set up a common units structure for all calculations
+        // Maybe just need to change Nelson code to accept above temp / rh scales
+         if (SnowDay)
+            nConsectiveSnowDays++;
+        else
+            nConsectiveSnowDays = 0;
+        
+        //update the precip deque before updating GSI!!!!
+        int days = secs / 86400;//86400 seconds per day
+        if (days > 1)//gap, deal with it by inserting zeroes
+        {
+            int pDays = min(days - 1, nPrecipQueueDays);
+            for (int p = 0; p < pDays; p++)
+                qPrecip.push_back(0.0);
+        }
+        qPrecip.push_back(pcp24);
+        while (qPrecip.size() > nPrecipQueueDays)
+            qPrecip.pop_front();
+
+        HerbFM.Update(Temp, MaxTemp, MinTemp, RH, MinRH, Julian, GetXDaysPrecipitation(HerbFM.GetNumPrecipDays()), thisUtcTime.timestamp());
+        WoodyFM.Update(Temp, MaxTemp, MinTemp, RH, MinRH, Julian, GetXDaysPrecipitation(WoodyFM.GetNumPrecipDays()), thisUtcTime.timestamp());
+
+        m_GSI = HerbFM.CalcRunningAvgGSI();
+        MCHERB = HerbFM.GetMoisture(nConsectiveSnowDays >= SNOWDAYS_TRIGGER ? true : false);
+        MCWOOD = WoodyFM.GetMoisture(nConsectiveSnowDays >= SNOWDAYS_TRIGGER ? true : false);
+        // Calculate the daily KBDI that is used for the drought fuel loading
+        KBDI = iCalcKBDI(pcp24, (int)MaxTemp, CummPrecip, YKBDI, AvgPrecip);
+        YKBDI = KBDI;
+
+        lastDailyUpdateTime = thisUtcTime;
+ 
+    }
+    iSetFuelMoistures(MC1, MC10, MC100, MC1000, MCWOOD, MCHERB, FuelTemperature);
+    // Calculate the indices
+
+    double fSC, fERC, fBI, fIC;
+    iCalcIndexes((int)WS, SlopeClass, &fSC, &fERC, &fBI, &fIC);
+    YesterdayJDay = Julian;
+    lastUtcUpdateTime = thisUtcTime;
+}
+
+void NFDRS4::Update(int Year, int Month, int Day, int Hour, double Temp, double RH, double PPTAmt, 
+    double WS, bool SnowDay, double MC1, double MC10, double MC100, double MC1000, double FuelTemperature)
+{
+    int Julian = CalcJulianDay(Year, Month - 1, Day);
+    if (PrevYear > 0 && YesterdayJDay > 0)
+    {
+        if (Year < PrevYear || (Year > (PrevYear + 1)) || (365 * (Year - PrevYear) + Julian - YesterdayJDay > 30))
+        {
+            //reinit
+            Init(Lat, FuelModel, SlopeClass, AvgPrecip, UseLoadTransfer, UseCuring, HerbFM.GetIsAnnual(), KBDIThreshold, m_regObsHour, true);
+        }
+    }
+
+    //Herb and 1-Hour reset every year.... Verify we want to do this
+    if (Julian < YesterdayJDay || YesterdayJDay < 0) {
+        HerbFM.ResetHerbState();
+    }
+    if (PrevYear != Year)
+    {
+        PrevYear = Year;
+    }
 
     //update 24 hour deques
     UTCTime thisUtcTime(Year, Month, Day, Hour, 0, 0);   
