@@ -3,11 +3,54 @@
 
 using namespace std;
 
-constexpr const char *INPUT_FILE = "../../data/input_dfm.nc";
-constexpr const char *OUTPUT_FILE = "../../data/output_dfm.nc";
-
+constexpr const char *INPUT_FILE = "../data/input_nfdrs.nc";
+constexpr const char *OUTPUT_DFM_FILE = "../data/output_dfm.nc";
+constexpr const char *OUTPUT_FILE = "../data/output_nfdrs.nc";
+constexpr const char *CUSTOM_FM_FILE = "../data/custom_fuel_models.csv";
 
 struct GridDFMData
+{
+    size_t T, N, M; // T timesteps, NxM Grid
+    vector<double> oneHourMedians;
+    vector<double> tenHourMedians;
+    vector<double> hundredHourMedians;
+    vector<double> thousandHourMedians;
+    vector<double> fuelTemperatures;
+
+    explicit GridDFMData(size_t T, size_t N, size_t M)
+        : T(T), N(N), M(M),
+        oneHourMedians(T * N * M),
+        tenHourMedians(T * N * M),
+        hundredHourMedians(T * N * M),
+        thousandHourMedians(T * N * M),
+        fuelTemperatures(T * N * M)
+    {
+    }
+};
+
+struct GridNFDRSData
+{
+    size_t T, N, M; // T timesteps, NxM Grid
+    vector<int> year, month, day, hour;
+    vector<double> lat;
+    vector<int> fModels, slopeClass; 
+    vector<double> temp, rh, ppt;
+    vector<bool> snowDay;
+    vector<double> windSpeed;
+
+    explicit GridNFDRSData(size_t T, size_t N, size_t M)
+        : T(T), N(N), M(M),
+          year(T), month(T), day(T), hour(T),
+          julian(T), lat(N * M), temp(T * N * M), 
+          rh(T * N * M), minTemp(T * N * M), maxTemp(T * N * M),
+          minRH(T * N * M), prec24(T * N * M), annAvgPrec(N * M), 
+          snowDay(T * N * M),
+          windSpeed(T * N * M), slopeClass(T * N * M)
+    {
+    }
+};
+
+struct GridNFDRSData
 {
     size_t T, N, M; // T timesteps, NxM Grid
     vector<double> yearData, monthData, dayData, hourData, tempData, rhData, srData, pptData, fmData;
@@ -70,6 +113,10 @@ GridDFMData ReadNetCDF(const string &filename = INPUT_FILE)
 
 int main()
 {
+    // TODO: read CSV file CUSTOM_FM_FILE
+    // TODO: create CFuelModelParams with entries in the CSV file
+    // TODO: use NFDRS4::AddCustomFuel to add the custom fuel
+
     cout << "Hello, World!" << endl;
     auto data = ReadNetCDF();
     return 0;

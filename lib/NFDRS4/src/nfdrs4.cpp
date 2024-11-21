@@ -777,26 +777,25 @@ void NFDRS4::UpdateDaily(int Year, int Month, int Day, int Julian, double Temp, 
 
 	// Update live fuel moisture once per day
 	HerbFM.Update(Temp, MaxTemp, MinTemp, RH, MinRH, Julian, GetXDaysPrecipitation(HerbFM.GetNumPrecipDays()), thisUtcTime.timestamp());
-		WoodyFM.Update(Temp, MaxTemp, MinTemp, RH, MinRH, Julian, GetXDaysPrecipitation(WoodyFM.GetNumPrecipDays()), thisUtcTime.timestamp());
+    WoodyFM.Update(Temp, MaxTemp, MinTemp, RH, MinRH, Julian, GetXDaysPrecipitation(WoodyFM.GetNumPrecipDays()), thisUtcTime.timestamp());
 
-		m_GSI = HerbFM.CalcRunningAvgGSI();
-		MCHERB = HerbFM.GetMoisture(nConsectiveSnowDays >= SNOWDAYS_TRIGGER ? true : false);
-		MCWOOD = WoodyFM.GetMoisture(nConsectiveSnowDays >= SNOWDAYS_TRIGGER ? true : false);
-		// Calculate the daily KBDI that is used for the drought fuel loading
-		KBDI = iCalcKBDI(pcp24, (int)MaxTemp, CummPrecip, YKBDI, AvgPrecip);
-		YKBDI = KBDI;
+    m_GSI = HerbFM.CalcRunningAvgGSI();
+    MCHERB = HerbFM.GetMoisture(nConsectiveSnowDays >= SNOWDAYS_TRIGGER ? true : false);
+    MCWOOD = WoodyFM.GetMoisture(nConsectiveSnowDays >= SNOWDAYS_TRIGGER ? true : false);
+    // Calculate the daily KBDI that is used for the drought fuel loading
+    KBDI = iCalcKBDI(pcp24, (int)MaxTemp, CummPrecip, YKBDI, AvgPrecip);
+    YKBDI = KBDI;
 
-		iSetFuelMoistures(fMC1, fMC10, fMC100, fMC1000, MCWOOD, MCHERB, fuelTemp);
-		// Calculate the indices
+    iSetFuelMoistures(fMC1, fMC10, fMC100, fMC1000, MCWOOD, MCHERB, fuelTemp);
+    // Calculate the indices
 
-		double fSC, fERC, fBI, fIC;
-		//FuelTemperature = fuelTemp;
-		iCalcIndexes((int)WS, SlopeClass, &fSC, &fERC, &fBI, &fIC);
+    double fSC, fERC, fBI, fIC;
+    //FuelTemperature = fuelTemp;
+    iCalcIndexes((int)WS, SlopeClass, &fSC, &fERC, &fBI, &fIC);
 
+    YesterdayJDay = Julian;
 
-	YesterdayJDay = Julian;
-
-	//lastUpdateTime = thisTime;
+    //lastUpdateTime = thisTime;
     lastUtcUpdateTime = lastUtcUpdateTime = thisUtcTime;
 }
 
