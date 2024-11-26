@@ -398,3 +398,4 @@ CMakeSettings.json
 
 /extern/spatial
 /build
+*.o
