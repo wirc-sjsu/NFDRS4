@@ -8,8 +8,7 @@ IF(MSVC)
 ENDIF(MSVC)
 
 find_library(CONFIG4CPP_LIB config4cpp.lib)
-find_path(CONFIG4CPP_DIR Configuration.h
-)
+find_path(CONFIG4CPP_DIR Configuration.h)
 include_directories(${CONFIG4CPP_DIR})
 
 set(CONFIG4CPP_HEADERS
@@ -28,3 +27,6 @@ add_library(config4cpp STATIC IMPORTED)
 set_target_properties(config4cpp PROPERTIES IMPORTED_LOCATION ${CONFIG4CPP_LIB})
 #target_link_libraries(${PROJECT_NAME} PRIVATE config4cpp)
 target_link_libraries (${PROJECT_NAME} PUBLIC NFDRS4 fw21 PRIVATE config4cpp)
+
+add_library(CFuelModelParams STATIC src/CNFDRSParams.cpp)
+target_link_libraries (CFuelModelParams PUBLIC NFDRS4)
