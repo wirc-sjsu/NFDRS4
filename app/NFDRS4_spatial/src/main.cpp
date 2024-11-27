@@ -6,10 +6,10 @@
 
 using namespace std;
 
-constexpr int NO_DATA = -9999;
-constexpr const char *INPUT_PARAMS = "./params.txt";
+constexpr int NO_DATA = -1;
 constexpr const char *INPUT_NFDRS = "./input_nfdrs.nc";
 constexpr const char *OUTPUT_DFM = "./output_dfm.nc";
+constexpr const char *OUTPUT_NFDRS = "./output_nfdrs.nc";
 
 struct GridNFDRSData
 {
@@ -117,73 +117,120 @@ GridNFDRSData ReadNetCDF(const string &input_nfdrs = INPUT_NFDRS, const string &
 
 int main()
 {
-    Timer t;
     cout << "Reading data..." << endl;
+    // Read Input Data
     GridNFDRSData data = ReadNetCDF();
-
+    
+    cout << "Initialize models..." << endl;
+    // Define Dimension Sizes
     size_t T = data.T;
     size_t N = data.N;
     size_t M = data.M;
     size_t spatialSize = N * M;
 
-    // Output Data
+    // Initialize Output Data Arrays
+    vector<double> KBDI(T * N * M);
     vector<double> GSI(T * N * M); 
     vector<double> MCWOOD(T * N * M); 
     vector<double> MCHERB(T * N * M); 
-    vector<double> KBDI(T * N * M);
     vector<double> SC(T * N * M);
     vector<double> ERC(T * N * M);
     vector<double> BI(T * N * M);
     vector<double> IC(T * N * M);
     
+    // Define Fuel Behaviour Model Mapping
+    std::map<int, char> fModelMap = {
+        {1, 'V'},
+        {2, 'W'},
+        {3, 'X'},
+        {4, 'Y'},
+        {5, 'Z'}
+    };
+
     // Initialize NFDRS objects
     std::vector<NFDRS4> NFDRSGrid;
     for (size_t i = 0; i < spatialSize; ++i)
     {
         if ( data.isBurnable[i] == 1 )
         {
-            NFDRSGrid.emplace_back(
-                data.lat[i], 'A', data.slopeClass[i], data.annAvgPrec[i], true, true, false
-            );  
+            int fModel = data.fModels[i];
+            if (fModelMap.find(fModel) != fModelMap.end()) {
+                char fModelClass = fModelMap[fModel];
+                NFDRSGrid.emplace_back(
+                    data.lat[i], fModelClass, data.slopeClass[i], data.annAvgPrec[i], true, true, false
+                );
+            }
         }  
     }
-        
-    // TODO: Process data as needed
+    
     for (size_t t = 0; t < T; ++t)
     {
+        Timer timer;
+        printf("\nTimestep: %zu/%zu...", (t + 1), T);
+        int c = 0;
         for (size_t i = 0; i < spatialSize; ++i)
         {
             if ( data.isBurnable[i] == 1 )
             {
                 size_t idx = t * spatialSize + i;
-                // print the data
-                cout << "Year: " << data.year[t] << endl;
-                cout << "Month: " << data.month[t] << endl;
-                cout << "Day: " << data.day[t] << endl;
-                cout << "Hour: " << data.hour[t] << endl;
-                cout << "Lat: " << data.lat[i] << endl;
-                cout << "FuelModel: " << data.fModels[i] << endl;
-                cout << "SlopeClass: " << data.slopeClass[i] << endl;
-                cout << "AnnAvgPrec: " << data.annAvgPrec[i] << endl;
-                cout << "isBurnable: " << data.isBurnable[i] << endl;
-                cout << "Temp: " << data.temp[idx] << endl;
-                cout << "RH: " << data.rh[idx] << endl;
-                cout << "PPT: " << data.ppt[idx] << endl;
-                cout << "SnowDay: " << data.snowDay[idx] << endl;
-                // cout << "WindSpeed: " << data.windSpeed[idx] << endl;
-
-                cout << "MC1: " << data.MC1[idx] << endl;
-                cout << "MC10: " << data.MC10[idx] << endl;
-                cout << "MC100: " << data.MC100[idx] << endl;
-                cout << "MC1000: " << data.MC1000[idx] << endl;
-                cout << "FuelTemp: " << data.fuelTemp[idx] << endl;
-
-                goto A;
+                // Update NFDRS state
+                NFDRSGrid[c].Update(
+                    data.year[t], data.month[t], data.day[t], data.hour[t], 
+                    data.temp[idx], data.rh[idx], data.ppt[idx], data.windSpeed[idx], 
+                    data.snowDay[idx], data.MC1[idx], data.MC10[idx], data.MC100[idx], 
+                    data.MC1000[idx], data.fuelTemp[idx]
+                );
+                // Get output variables
+                KBDI[idx] = NFDRSGrid[c].KBDI;
+                GSI[idx] = NFDRSGrid[c].m_GSI;
+                MCWOOD[idx] = NFDRSGrid[c].MCWOOD;
+                MCHERB[idx] = NFDRSGrid[c].MCHERB;
+                SC[idx] = NFDRSGrid[c].SC;
+                ERC[idx] = NFDRSGrid[c].ERC;
+                BI[idx] = NFDRSGrid[c].BI;
+                IC[idx] = NFDRSGrid[c].IC;
+                c += 1;
+            } else {
+                // Fill the no data value otherwise
+                KBDI[i] = NO_DATA;
+                GSI[i] = NO_DATA;
+                MCWOOD[i] = NO_DATA;
+                MCHERB[i] = NO_DATA;
+                SC[i] = NO_DATA;
+                ERC[i] = NO_DATA;
+                BI[i] = NO_DATA;
+                IC[i] = NO_DATA;
             }
         }
+        printf("\tDone\n");
     }
-    A:
     // Output
+    netCDF::NcFile outputFile(OUTPUT_NFDRS, netCDF::NcFile::replace);
+
+    // Get the dimensions
+    auto timeDim = outputFile.addDim("time", T);
+    auto southNorthDim = outputFile.addDim("south_north", N);
+    auto westEastDim = outputFile.addDim("west_east", M);
+
+    auto KBDIData = outputFile.addVar("KBDI", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
+    auto GSIData = outputFile.addVar("GSI", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
+    auto MCWOODData = outputFile.addVar("MCWOOD", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
+    auto MCHERBData = outputFile.addVar("MCHERB", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
+    auto SCData = outputFile.addVar("SC", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
+    auto ERCData = outputFile.addVar("ERC", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
+    auto BIData = outputFile.addVar("BI", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
+    auto ICData = outputFile.addVar("IC", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
+
+    KBDIData.putVar(&KBDI[0]);
+    GSIData.putVar(&GSI[0]);
+    MCWOODData.putVar(&MCWOOD[0]);
+    MCHERBData.putVar(&MCHERB[0]);
+    SCData.putVar(&SC[0]);
+    ERCData.putVar(&ERC[0]);
+    BIData.putVar(&BI[0]);
+    ICData.putVar(&IC[0]);
+
+    outputFile.close();
 
     return 0;
 }
