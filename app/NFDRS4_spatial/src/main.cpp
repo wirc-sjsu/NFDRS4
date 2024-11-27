@@ -170,9 +170,9 @@ int main()
         int c = 0;
         for (size_t i = 0; i < spatialSize; ++i)
         {
+            size_t idx = t * spatialSize + i;
             if ( data.isBurnable[i] == 1 )
             {
-                size_t idx = t * spatialSize + i;
                 // Update NFDRS state
                 NFDRSGrid[c].Update(
                     data.year[t], data.month[t], data.day[t], data.hour[t], 
@@ -192,14 +192,14 @@ int main()
                 c += 1;
             } else {
                 // Fill the no data value otherwise
-                KBDI[i] = NO_DATA;
-                GSI[i] = NO_DATA;
-                MCWOOD[i] = NO_DATA;
-                MCHERB[i] = NO_DATA;
-                SC[i] = NO_DATA;
-                ERC[i] = NO_DATA;
-                BI[i] = NO_DATA;
-                IC[i] = NO_DATA;
+                KBDI[idx] = NO_DATA;
+                GSI[idx] = NO_DATA;
+                MCWOOD[idx] = NO_DATA;
+                MCHERB[idx] = NO_DATA;
+                SC[idx] = NO_DATA;
+                ERC[idx] = NO_DATA;
+                BI[idx] = NO_DATA;
+                IC[idx] = NO_DATA;
             }
         }
         printf("\tDone\n");
