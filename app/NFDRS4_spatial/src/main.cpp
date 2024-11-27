@@ -151,23 +151,32 @@ int main()
     std::vector<NFDRS4> NFDRSGrid;
     for (size_t i = 0; i < spatialSize; ++i)
     {
+        // Only define NFDRS class at burnable locations
         if ( data.isBurnable[i] == 1 )
         {
+            // Fuel Model in the input data
             int fModel = data.fModels[i];
+            // Search for the Fuel Model in the Map
             if (fModelMap.find(fModel) != fModelMap.end()) {
+                // Define NFDRS fuel model class
                 char fModelClass = fModelMap[fModel];
+                // Initialize NFDRS class
                 NFDRSGrid.emplace_back(
                     data.lat[i], fModelClass, data.slopeClass[i], data.annAvgPrec[i], true, true, false
                 );
+            } else {
+                printf("WARNING: fuel model out of range");
             }
         }  
     }
     
+    // Timestep loop
     for (size_t t = 0; t < T; ++t)
     {
         Timer timer;
         printf("\nTimestep: %zu/%zu...", (t + 1), T);
         int c = 0;
+        // Spatial loop
         for (size_t i = 0; i < spatialSize; ++i)
         {
             size_t idx = t * spatialSize + i;
@@ -191,7 +200,7 @@ int main()
                 IC[idx] = NFDRSGrid[c].IC;
                 c += 1;
             } else {
-                // Fill the no data value otherwise
+                // Fill output with no data value
                 KBDI[idx] = NO_DATA;
                 GSI[idx] = NO_DATA;
                 MCWOOD[idx] = NO_DATA;
@@ -204,14 +213,15 @@ int main()
         }
         printf("\tDone\n");
     }
-    // Output
+    
+    // Write output into NetCDF file
+    // Open NetCDF file
     netCDF::NcFile outputFile(OUTPUT_NFDRS, netCDF::NcFile::replace);
-
-    // Get the dimensions
+    // Get dimensions
     auto timeDim = outputFile.addDim("time", T);
     auto southNorthDim = outputFile.addDim("south_north", N);
     auto westEastDim = outputFile.addDim("west_east", M);
-
+    // Get variables
     auto KBDIData = outputFile.addVar("KBDI", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
     auto GSIData = outputFile.addVar("GSI", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
     auto MCWOODData = outputFile.addVar("MCWOOD", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
@@ -220,7 +230,7 @@ int main()
     auto ERCData = outputFile.addVar("ERC", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
     auto BIData = outputFile.addVar("BI", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
     auto ICData = outputFile.addVar("IC", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
-
+    // Write variables from output data
     KBDIData.putVar(&KBDI[0]);
     GSIData.putVar(&GSI[0]);
     MCWOODData.putVar(&MCWOOD[0]);
@@ -229,7 +239,7 @@ int main()
     ERCData.putVar(&ERC[0]);
     BIData.putVar(&BI[0]);
     ICData.putVar(&IC[0]);
-
+    // Close NetCDF file
     outputFile.close();
 
     return 0;
