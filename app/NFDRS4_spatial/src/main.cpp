@@ -71,7 +71,7 @@ GridNFDRSData ReadNetCDF(const string &input_nfdrs = INPUT_NFDRS, const string &
         netCDF::NcVar rhVar = nfdrs.getVar("RH");
         netCDF::NcVar pptVar = nfdrs.getVar("PPT");
         netCDF::NcVar snowDayVar = nfdrs.getVar("SnowDay");
-        // netCDF::NcVar windSpeedVar = nfdrs.getVar("WindSpeed");
+        netCDF::NcVar windSpeedVar = nfdrs.getVar("WindSpeed");
 
         netCDF::NcVar mc1Var = dfm.getVar("MC1");
         netCDF::NcVar mc10Var = dfm.getVar("MC10");
@@ -93,7 +93,7 @@ GridNFDRSData ReadNetCDF(const string &input_nfdrs = INPUT_NFDRS, const string &
         rhVar.getVar(&data.rh[0]);
         pptVar.getVar(&data.ppt[0]);
         snowDayVar.getVar(&data.snowDay[0]);
-        // windSpeedVar.getVar(&data.windSpeed[0]);
+        windSpeedVar.getVar(&data.windSpeed[0]);
 
         mc1Var.getVar(&data.MC1[0]);
         mc10Var.getVar(&data.MC10[0]);
@@ -145,7 +145,7 @@ int main()
             cout << "RH: " << data.rh[idx] << endl;
             cout << "PPT: " << data.ppt[idx] << endl;
             cout << "SnowDay: " << data.snowDay[idx] << endl;
-            // cout << "WindSpeed: " << data.windSpeed[idx] << endl;
+            cout << "WindSpeed: " << data.windSpeed[idx] << endl;
 
             cout << "MC1: " << data.MC1[idx] << endl;
             cout << "MC10: " << data.MC10[idx] << endl;

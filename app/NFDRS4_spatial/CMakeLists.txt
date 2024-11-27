@@ -7,6 +7,10 @@ endif()
 
 add_executable(${PROJECT_NAME} src/main.cpp)
 
+target_include_directories(${PROJECT_NAME} PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include  # Local include directory
+)
+
 target_link_directories(${PROJECT_NAME} PRIVATE
     ${SPATIAL_LIBS_DIR}/lib
 )
