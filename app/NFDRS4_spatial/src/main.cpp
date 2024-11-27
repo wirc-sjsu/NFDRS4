@@ -7,6 +7,7 @@
 using namespace std;
 
 constexpr int NO_DATA = -9999;
+constexpr const char *INPUT_PARAMS = "./params.txt";
 constexpr const char *INPUT_NFDRS = "./input_nfdrs.nc";
 constexpr const char *OUTPUT_DFM = "./output_dfm.nc";
 
@@ -125,35 +126,60 @@ int main()
     size_t M = data.M;
     size_t spatialSize = N * M;
 
+    // Output Data
+    vector<double> GSI(T * N * M); 
+    vector<double> MCWOOD(T * N * M); 
+    vector<double> MCHERB(T * N * M); 
+    vector<double> KBDI(T * N * M);
+    vector<double> SC(T * N * M);
+    vector<double> ERC(T * N * M);
+    vector<double> BI(T * N * M);
+    vector<double> IC(T * N * M);
+    
+    // Initialize NFDRS objects
+    std::vector<NFDRS4> NFDRSGrid;
+    for (size_t i = 0; i < spatialSize; ++i)
+    {
+        if ( data.isBurnable[i] == 1 )
+        {
+            NFDRSGrid.emplace_back(
+                data.lat[i], 'A', data.slopeClass[i], data.annAvgPrec[i], true, true, false
+            );  
+        }  
+    }
+        
     // TODO: Process data as needed
     for (size_t t = 0; t < T; ++t)
     {
         for (size_t i = 0; i < spatialSize; ++i)
         {
-            size_t idx = t * spatialSize + i;
-            // print the data
-            cout << "Year: " << data.year[t] << endl;
-            cout << "Month: " << data.month[t] << endl;
-            cout << "Day: " << data.day[t] << endl;
-            cout << "Hour: " << data.hour[t] << endl;
-            cout << "Lat: " << data.lat[i] << endl;
-            cout << "FuelModel: " << data.fModels[i] << endl;
-            cout << "SlopeClass: " << data.slopeClass[i] << endl;
-            cout << "AnnAvgPrec: " << data.annAvgPrec[i] << endl;
-            cout << "isBurnable: " << data.isBurnable[i] << endl;
-            cout << "Temp: " << data.temp[idx] << endl;
-            cout << "RH: " << data.rh[idx] << endl;
-            cout << "PPT: " << data.ppt[idx] << endl;
-            cout << "SnowDay: " << data.snowDay[idx] << endl;
-            // cout << "WindSpeed: " << data.windSpeed[idx] << endl;
+            if ( data.isBurnable[i] == 1 )
+            {
+                size_t idx = t * spatialSize + i;
+                // print the data
+                cout << "Year: " << data.year[t] << endl;
+                cout << "Month: " << data.month[t] << endl;
+                cout << "Day: " << data.day[t] << endl;
+                cout << "Hour: " << data.hour[t] << endl;
+                cout << "Lat: " << data.lat[i] << endl;
+                cout << "FuelModel: " << data.fModels[i] << endl;
+                cout << "SlopeClass: " << data.slopeClass[i] << endl;
+                cout << "AnnAvgPrec: " << data.annAvgPrec[i] << endl;
+                cout << "isBurnable: " << data.isBurnable[i] << endl;
+                cout << "Temp: " << data.temp[idx] << endl;
+                cout << "RH: " << data.rh[idx] << endl;
+                cout << "PPT: " << data.ppt[idx] << endl;
+                cout << "SnowDay: " << data.snowDay[idx] << endl;
+                // cout << "WindSpeed: " << data.windSpeed[idx] << endl;
 
-            cout << "MC1: " << data.MC1[idx] << endl;
-            cout << "MC10: " << data.MC10[idx] << endl;
-            cout << "MC100: " << data.MC100[idx] << endl;
-            cout << "MC1000: " << data.MC1000[idx] << endl;
-            cout << "FuelTemp: " << data.fuelTemp[idx] << endl;
+                cout << "MC1: " << data.MC1[idx] << endl;
+                cout << "MC10: " << data.MC10[idx] << endl;
+                cout << "MC100: " << data.MC100[idx] << endl;
+                cout << "MC1000: " << data.MC1000[idx] << endl;
+                cout << "FuelTemp: " << data.fuelTemp[idx] << endl;
 
-            goto A;
+                goto A;
+            }
         }
     }
     A:
