@@ -7,9 +7,9 @@
 using namespace std;
 
 constexpr int NO_DATA = -1;
-constexpr const char *INPUT_NFDRS = "./input_nfdrs.nc";
-constexpr const char *OUTPUT_DFM = "./output_dfm.nc";
-constexpr const char *OUTPUT_NFDRS = "./output_nfdrs.nc";
+constexpr const char *INPUT_NFDRS = "../data/input_nfdrs.nc";
+constexpr const char *OUTPUT_DFM = "../data/output_dfm.nc";
+constexpr const char *OUTPUT_NFDRS = "../data/output_nfdrs.nc";
 
 struct GridNFDRSData
 {
