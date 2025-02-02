@@ -1,17 +1,20 @@
 #include <iostream>
 #include <netcdf>
 #include <vector>
-#include "nfdrs4.h"
+#include <nfdrs4.h>
+
 #include "timer.h"
+#include "args.hxx"
 
 using namespace std;
 
 constexpr int NO_DATA = -1;
-constexpr const char *INPUT_NFDRS = "../data/input_nfdrs.nc";
-constexpr const char *OUTPUT_DFM = "../data/output_dfm.nc";
-constexpr const char *OUTPUT_NFDRS = "../data/output_nfdrs.nc";
+constexpr const char *DEFAULT_INPUT_NFDRS = "../../data/input_nfdrs.nc";
+constexpr const char *DEFAULT_OUTPUT_NFDRS = "../../data/output_nfdrs.nc";
+constexpr const char *DEFAULT_OUTPUT_DFM = "../../data/output_dfm.nc";
 
-struct StaticNFDRSData {
+struct StaticNFDRSData
+{
     size_t N, M;
     vector<int> isBurnable;
     vector<double> lat, annAvgPrec;
@@ -26,8 +29,10 @@ struct StaticNFDRSData {
           slopeClass(N * M) {}
 };
 
-StaticNFDRSData ReadStaticNFDRS(const string &input_nfdrs) {
-    try {
+StaticNFDRSData ReadStaticNFDRS(const string &input_nfdrs)
+{
+    try
+    {
         netCDF::NcFile nfdrs(input_nfdrs, netCDF::NcFile::read);
 
         // Get dimensions
@@ -55,39 +60,58 @@ StaticNFDRSData ReadStaticNFDRS(const string &input_nfdrs) {
         nfdrs.close();
 
         return data;
-    } catch (const netCDF::exceptions::NcException &e) {
+    }
+    catch (const netCDF::exceptions::NcException &e)
+    {
         cerr << "NetCDF Error: " << e.what() << endl;
         exit(EXIT_FAILURE);
     }
 }
 
-struct DynamicNFDRSData {
+struct DynamicNFDRSData
+{
     size_t N, M;
     int year, month, day, hour;
-    std::vector<double> temp, rh, ppt, windSpeed;
-    std::vector<int> snowDay;
-    std::vector<double> MC1, MC10, MC100, MC1000, fuelTemp;
+    vector<double> temp, rh, ppt, windSpeed, sr;
+    vector<int> snowDay;
+    vector<double> MC1, MC10, MC100, MC1000, fuelTemp;
 
-    explicit DynamicNFDRSData(size_t N, size_t M)
-        : N(N), M(M), 
+    explicit DynamicNFDRSData(size_t N, size_t M, bool runDFM = false)
+        : N(N), M(M),
           year(0), month(0), day(0), hour(0),
-          temp(N * M), rh(N * M), ppt(N * M), 
-          windSpeed(N * M), snowDay(N * M),
-          MC1(N * M), MC10(N * M), 
-          MC100(N * M), MC1000(N * M), 
-          fuelTemp(N * M) {}
+          temp(N * M), rh(N * M), ppt(N * M),
+          windSpeed(N * M), sr(N * M),
+          snowDay(N * M)
+    {
+        if (!runDFM)
+        {
+            MC1.resize(N * M);
+            MC10.resize(N * M);
+            MC100.resize(N * M);
+            MC1000.resize(N * M);
+            fuelTemp.resize(N * M);
+        }
+    }
 };
 
 DynamicNFDRSData ReadDynamicNFDRS(
-    const string &input_nfdrs, const string &output_dfm, 
-    size_t N, size_t M, size_t t
-) {
-    try {
+    const string &input_nfdrs, const string &output_dfm,
+    size_t N, size_t M, size_t t, bool runDFM)
+{
+    try
+    {
         netCDF::NcFile nfdrs(input_nfdrs, netCDF::NcFile::read);
-        netCDF::NcFile dfm(output_dfm, netCDF::NcFile::read);
+
+        // Load 1D variables for timestep t
+        vector<size_t> start1 = {t};
+        vector<size_t> count1 = {1};
+
+        // Load 3D variables for timestep t
+        vector<size_t> start = {t, 0, 0};
+        vector<size_t> count = {1, N, M};
 
         // Create DynamicNFDRSData object
-        DynamicNFDRSData data(N, M);
+        DynamicNFDRSData data(N, M, runDFM);
 
         // Dynamic variables
         netCDF::NcVar yearVar = nfdrs.getVar("Year");
@@ -99,51 +123,106 @@ DynamicNFDRSData ReadDynamicNFDRS(
         netCDF::NcVar pptVar = nfdrs.getVar("PPT");
         netCDF::NcVar snowDayVar = nfdrs.getVar("SnowDay");
         netCDF::NcVar windSpeedVar = nfdrs.getVar("WindSpeed");
-
-        netCDF::NcVar mc1Var = dfm.getVar("MC1");
-        netCDF::NcVar mc10Var = dfm.getVar("MC10");
-        netCDF::NcVar mc100Var = dfm.getVar("MC100");
-        netCDF::NcVar mc1000Var = dfm.getVar("MC1000");
-        netCDF::NcVar fuelTempVar = dfm.getVar("FuelTemp");
-
-        // Load 1D variables for timestep t
-        std::vector<size_t> start1 = {t};
-        std::vector<size_t> count1 = {1};
+        netCDF::NcVar srVar = nfdrs.getVar("SR");
 
         yearVar.getVar(start1, count1, &data.year);
         monthVar.getVar(start1, count1, &data.month);
         dayVar.getVar(start1, count1, &data.day);
         hourVar.getVar(start1, count1, &data.hour);
 
-        // Load 3D variables for timestep t
-        std::vector<size_t> start = {t, 0, 0};
-        std::vector<size_t> count = {1, N, M};
-
         tempVar.getVar(start, count, &data.temp[0]);
         rhVar.getVar(start, count, &data.rh[0]);
         pptVar.getVar(start, count, &data.ppt[0]);
         snowDayVar.getVar(start, count, &data.snowDay[0]);
         windSpeedVar.getVar(start, count, &data.windSpeed[0]);
-
-        mc1Var.getVar(start, count, &data.MC1[0]);
-        mc10Var.getVar(start, count, &data.MC10[0]);
-        mc100Var.getVar(start, count, &data.MC100[0]);
-        mc1000Var.getVar(start, count, &data.MC1000[0]);
-        fuelTempVar.getVar(start, count, &data.fuelTemp[0]);
+        srVar.getVar(start, count, &data.sr[0]);
 
         nfdrs.close();
-        dfm.close();
+
+        if (!runDFM)
+        {
+            netCDF::NcFile dfm(output_dfm, netCDF::NcFile::read);
+            // DFM variables
+            netCDF::NcVar mc1Var = dfm.getVar("MC1");
+            netCDF::NcVar mc10Var = dfm.getVar("MC10");
+            netCDF::NcVar mc100Var = dfm.getVar("MC100");
+            netCDF::NcVar mc1000Var = dfm.getVar("MC1000");
+            netCDF::NcVar fuelTempVar = dfm.getVar("FuelTemp");
+
+            mc1Var.getVar(start, count, &data.MC1[0]);
+            mc10Var.getVar(start, count, &data.MC10[0]);
+            mc100Var.getVar(start, count, &data.MC100[0]);
+            mc1000Var.getVar(start, count, &data.MC1000[0]);
+            fuelTempVar.getVar(start, count, &data.fuelTemp[0]);
+
+            dfm.close();
+        }
 
         return data;
-    } catch (const netCDF::exceptions::NcException &e) {
+    }
+    catch (const netCDF::exceptions::NcException &e)
+    {
         cerr << "NetCDF Error: " << e.what() << endl;
         exit(EXIT_FAILURE);
     }
 }
 
-int main() {
-    cout << "Reading static data..." << endl;
-    StaticNFDRSData staticData = ReadStaticNFDRS(INPUT_NFDRS);
+int main(int argc, char **argv)
+{
+    args::ArgumentParser parser("NFDRS4 Spatial CLI", "By WIRC-SJSU.");
+    args::HelpFlag help(parser, "help", "Display help menu", {'h', "help"});
+    args::ValueFlag<string> inputNFDRS(parser, "path", "Input NFDRS4 file path", {'i', "input-nfdrs-path"});
+    args::ValueFlag<string> outputNFDRS(parser, "path", "Output NFDRS4 file path", {'o', "output-nfdrs-path"});
+
+    args::Group group(parser, "Provide one of the following:", args::Group::Validators::Xor);
+    args::Flag runDFM(group, "runDFM", "Run DFM on CPU", {'d', "runDFM"});
+    args::ValueFlag<string> outputDFM(group, "path", "Output DFM file path", {"o-dfm", "output-dfm-path"});
+
+    try
+    {
+        parser.ParseCLI(argc, argv);
+    }
+    catch (const args::Help &)
+    {
+        cout << parser;
+        return EXIT_SUCCESS;
+    }
+    catch (const args::ParseError &e)
+    {
+        cerr << e.what() << endl;
+        cerr << parser;
+        return EXIT_FAILURE;
+    }
+    catch (args::ValidationError e)
+    {
+        cerr << "\n[ERROR]: Either provide the runDFM flag OR the path to the output DFM file.\n"
+             << endl;
+        cerr << parser;
+        return EXIT_FAILURE;
+    }
+
+    if (runDFM)
+    {
+        cout << "Running DFM on CPU\n"
+             << endl;
+    }
+    else
+    {
+        cout << "Not running DFM on CPU\n"
+             << endl;
+    }
+
+    // Determine input file path
+    string input_nfdrs = inputNFDRS ? args::get(inputNFDRS) : DEFAULT_INPUT_NFDRS;
+    string output_nfdrs = outputNFDRS ? args::get(outputNFDRS) : DEFAULT_OUTPUT_NFDRS;
+    string output_dfm = outputDFM ? args::get(outputDFM) : DEFAULT_OUTPUT_DFM;
+
+    cout << "Input NFDRS file path " << input_nfdrs << endl;
+    cout << "Output NFDRS file path " << output_nfdrs << endl;
+    cout << "Output DFM file path " << output_dfm << endl;
+
+    cout << "\nReading static data..." << endl;
+    StaticNFDRSData staticData = ReadStaticNFDRS(input_nfdrs);
 
     size_t N = staticData.N;
     size_t M = staticData.M;
@@ -152,9 +231,13 @@ int main() {
     cout << "Reading dynamic data and processing..." << endl;
 
     // Get time dimension
-    netCDF::NcFile nfdrs(INPUT_NFDRS, netCDF::NcFile::read);
+    netCDF::NcFile nfdrs(input_nfdrs, netCDF::NcFile::read);
     size_t T = nfdrs.getDim("time").getSize();
     nfdrs.close();
+
+    // T, N, M
+    cout << "Time steps: " << T << endl;
+    cout << "Spatial size: " << N << " x " << M << endl;
 
     // Initialize output arrays with NO_DATA
     vector<double> KBDI(T * spatialSize, NO_DATA);
@@ -167,47 +250,62 @@ int main() {
     vector<double> IC(T * spatialSize, NO_DATA);
 
     // Define Fuel Behaviour Model Mapping
-    std::map<int, char> fModelMap = {
+    map<int, char> fModelMap = {
         {1, 'V'},
         {2, 'W'},
         {3, 'X'},
         {4, 'Y'},
-        {5, 'Z'}
-    };
+        {5, 'Z'}};
 
     // Initialize NFDRS objects for burnable locations
     vector<NFDRS4> NFDRSGrid;
+    NFDRSGrid.reserve(spatialSize);
     vector<size_t> burnableIndices;
-    for (size_t i = 0; i < spatialSize; ++i) {
-        if (staticData.isBurnable[i] == 1) {
+    for (size_t i = 0; i < spatialSize; ++i)
+    {
+        if (staticData.isBurnable[i] == 1)
+        {
             int fModel = staticData.fModels[i];
-            char fModelClass = fModelMap[fModel];            
+            char fModelClass = fModelMap[fModel];
             NFDRSGrid.emplace_back(staticData.lat[i], fModelClass, staticData.slopeClass[i],
                                    staticData.annAvgPrec[i], true, true, false);
             burnableIndices.push_back(i);
         }
     }
 
-    for (size_t t = 0; t < T; ++t) {
+    for (size_t t = 0; t < T; ++t)
+    {
         Timer timer;
         printf("Timestep: %zu/%zu...\n", t + 1, T);
 
         // Read dynamic data for timestep t
-        DynamicNFDRSData dynamicData = ReadDynamicNFDRS(INPUT_NFDRS, OUTPUT_DFM, N, M, t);
+        DynamicNFDRSData dynamicData = ReadDynamicNFDRS(input_nfdrs, output_dfm, N, M, t, runDFM);
 
         // Process timestep
         size_t c = 0;
-        for (size_t i : burnableIndices) {
-            size_t idx = i; // Spatial index
+        for (size_t i : burnableIndices)
+        {
+            size_t idx = i;                    // Spatial index
             size_t tidx = t * spatialSize + i; // Time-space index
-
-            NFDRSGrid[c].Update(
-                dynamicData.year, dynamicData.month, dynamicData.day, dynamicData.hour, 
-                dynamicData.temp[idx], dynamicData.rh[idx], dynamicData.ppt[idx], 
-                dynamicData.windSpeed[idx], dynamicData.snowDay[idx], 
-                dynamicData.MC1[idx], dynamicData.MC10[idx], dynamicData.MC100[idx], 
-                dynamicData.MC1000[idx], dynamicData.fuelTemp[idx]
-            );
+            
+            if (runDFM)
+            {
+                // Run DFM on CPU
+                NFDRSGrid[c].Update(
+                    dynamicData.year, dynamicData.month, dynamicData.day, dynamicData.hour,
+                    dynamicData.temp[idx], dynamicData.rh[idx], dynamicData.ppt[idx],
+                    dynamicData.sr[idx], dynamicData.windSpeed[idx], dynamicData.snowDay[idx]);
+            }
+            else
+            {
+                // DFM already ran on GPU - use result from output_dfm
+                NFDRSGrid[c].Update(
+                    dynamicData.year, dynamicData.month, dynamicData.day, dynamicData.hour,
+                    dynamicData.temp[idx], dynamicData.rh[idx], dynamicData.ppt[idx],
+                    dynamicData.windSpeed[idx], dynamicData.snowDay[idx],
+                    dynamicData.MC1[idx], dynamicData.MC10[idx], dynamicData.MC100[idx],
+                    dynamicData.MC1000[idx], dynamicData.fuelTemp[idx]);
+            }
 
             // Save results to output arrays
             KBDI[tidx] = NFDRSGrid[c].KBDI;
@@ -224,7 +322,7 @@ int main() {
     }
 
     // Write results to NetCDF file
-    netCDF::NcFile outputFile(OUTPUT_NFDRS, netCDF::NcFile::replace);
+    netCDF::NcFile outputFile(output_nfdrs, netCDF::NcFile::replace);
 
     auto timeDim = outputFile.addDim("time", T);
     auto southNorthDim = outputFile.addDim("south_north", N);
@@ -250,5 +348,5 @@ int main() {
 
     outputFile.close();
 
-    return 0;
+    return EXIT_SUCCESS;
 }
