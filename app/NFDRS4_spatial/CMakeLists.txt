@@ -28,6 +28,7 @@ set_target_properties(config4cpp PROPERTIES IMPORTED_LOCATION ${CONFIG4CPP_LIB})
 
 target_include_directories(${PROJECT_NAME} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include  # Local include directory
+    ${SPATIAL_LIBS_DIR}/include          # Spatial libs include directory
 )
 
 target_link_directories(${PROJECT_NAME} PRIVATE

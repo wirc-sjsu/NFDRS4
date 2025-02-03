@@ -11,7 +11,6 @@ using namespace std;
 constexpr int NO_DATA = -1;
 constexpr const char *DEFAULT_INPUT_NFDRS = "../../data/input_nfdrs.nc";
 constexpr const char *DEFAULT_OUTPUT_NFDRS = "../../data/output_nfdrs.nc";
-constexpr const char *DEFAULT_OUTPUT_DFM = "../../data/output_dfm.nc";
 
 struct StaticNFDRSData
 {
@@ -173,10 +172,7 @@ int main(int argc, char **argv)
     args::HelpFlag help(parser, "help", "Display help menu", {'h', "help"});
     args::ValueFlag<string> inputNFDRS(parser, "path", "Input NFDRS4 file path", {'i', "input-nfdrs-path"});
     args::ValueFlag<string> outputNFDRS(parser, "path", "Output NFDRS4 file path", {'o', "output-nfdrs-path"});
-
-    args::Group group(parser, "Provide one of the following:", args::Group::Validators::Xor);
-    args::Flag runDFM(group, "runDFM", "Run DFM on CPU", {'d', "runDFM"});
-    args::ValueFlag<string> outputDFM(group, "path", "Output DFM file path", {"o-dfm", "output-dfm-path"});
+    args::ValueFlag<string> outputDFM(parser, "path", "DFM file path", {'d', "dfm-path"});
 
     try
     {
@@ -193,33 +189,31 @@ int main(int argc, char **argv)
         cerr << parser;
         return EXIT_FAILURE;
     }
-    catch (args::ValidationError e)
-    {
-        cerr << "\n[ERROR]: Either provide the runDFM flag OR the path to the output DFM file.\n"
-             << endl;
-        cerr << parser;
-        return EXIT_FAILURE;
-    }
+
+    bool runDFM = !outputDFM;
 
     if (runDFM)
     {
-        cout << "Running DFM on CPU\n"
+        cout << "Running DFM \n"
              << endl;
     }
     else
     {
-        cout << "Not running DFM on CPU\n"
+        cout << "Not running DFM \n"
              << endl;
     }
 
     // Determine input file path
     string input_nfdrs = inputNFDRS ? args::get(inputNFDRS) : DEFAULT_INPUT_NFDRS;
     string output_nfdrs = outputNFDRS ? args::get(outputNFDRS) : DEFAULT_OUTPUT_NFDRS;
-    string output_dfm = outputDFM ? args::get(outputDFM) : DEFAULT_OUTPUT_DFM;
+    string output_dfm = outputDFM ? args::get(outputDFM) : "NO FILE PROVIDED";
 
     cout << "Input NFDRS file path " << input_nfdrs << endl;
     cout << "Output NFDRS file path " << output_nfdrs << endl;
-    cout << "Output DFM file path " << output_dfm << endl;
+    if (outputDFM)
+    {
+        cout << "DFM file path: " << output_dfm << endl;
+    }
 
     cout << "\nReading static data..." << endl;
     StaticNFDRSData staticData = ReadStaticNFDRS(input_nfdrs);
@@ -239,6 +233,18 @@ int main(int argc, char **argv)
     cout << "Time steps: " << T << endl;
     cout << "Spatial size: " << N << " x " << M << endl;
 
+    vector<double> MC1, MC10, MC100, MC1000, fuelTemp;
+
+    if (runDFM)
+    {
+        // Allocate memory for DFM variables
+        MC1.resize(T * spatialSize);
+        MC10.resize(T * spatialSize);
+        MC100.resize(T * spatialSize);
+        MC1000.resize(T * spatialSize);
+        fuelTemp.resize(T * spatialSize);
+    }
+
     // Initialize output arrays with NO_DATA
     vector<double> KBDI(T * spatialSize, NO_DATA);
     vector<double> GSI(T * spatialSize, NO_DATA);
@@ -255,7 +261,8 @@ int main(int argc, char **argv)
         {2, 'W'},
         {3, 'X'},
         {4, 'Y'},
-        {5, 'Z'}};
+        {5, 'Z'}
+    };
 
     // Initialize NFDRS objects for burnable locations
     vector<NFDRS4> NFDRSGrid;
@@ -295,6 +302,13 @@ int main(int argc, char **argv)
                     dynamicData.year, dynamicData.month, dynamicData.day, dynamicData.hour,
                     dynamicData.temp[idx], dynamicData.rh[idx], dynamicData.ppt[idx],
                     dynamicData.sr[idx], dynamicData.windSpeed[idx], dynamicData.snowDay[idx]);
+
+                // Save DFM variables MC1, MC10, MC100, MC1000, FuelTemp
+                MC1[tidx] = NFDRSGrid[c].MC1;
+                MC10[tidx] = NFDRSGrid[c].MC10;
+                MC100[tidx] = NFDRSGrid[c].MC100;
+                MC1000[tidx] = NFDRSGrid[c].MC1000;
+                fuelTemp[tidx] = NFDRSGrid[c].FuelTemperature;
             }
             else
             {
@@ -336,6 +350,22 @@ int main(int argc, char **argv)
     auto ERCData = outputFile.addVar("ERC", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
     auto BIData = outputFile.addVar("BI", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
     auto ICData = outputFile.addVar("IC", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
+
+    // Write MC1, MC10, MC100, MC1000, FuelTemp to netcdf file
+    if(runDFM)
+    {
+        auto MC1Data = outputFile.addVar("MC1", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
+        auto MC10Data = outputFile.addVar("MC10", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
+        auto MC100Data = outputFile.addVar("MC100", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
+        auto MC1000Data = outputFile.addVar("MC1000", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
+        auto fuelTempData = outputFile.addVar("FuelTemp", netCDF::ncDouble, {timeDim, southNorthDim, westEastDim});
+
+        MC1Data.putVar(&MC1[0]);
+        MC10Data.putVar(&MC10[0]);
+        MC100Data.putVar(&MC100[0]);
+        MC1000Data.putVar(&MC1000[0]);
+        fuelTempData.putVar(&fuelTemp[0]);
+    }
 
     KBDIData.putVar(&KBDI[0]);
     GSIData.putVar(&GSI[0]);
