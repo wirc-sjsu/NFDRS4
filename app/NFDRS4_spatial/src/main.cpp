@@ -9,8 +9,8 @@
 using namespace std;
 
 constexpr int NO_DATA = -1;
-constexpr const char *DEFAULT_INPUT_NFDRS = "../../data/input_nfdrs.nc";
-constexpr const char *DEFAULT_OUTPUT_NFDRS = "../../data/output_nfdrs.nc";
+constexpr const char *DEFAULT_INPUT_NFDRS = "../data/input_nfdrs.nc";
+constexpr const char *DEFAULT_OUTPUT_NFDRS = "../data/output_nfdrs.nc";
 
 struct StaticNFDRSData
 {
